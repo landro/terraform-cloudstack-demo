@@ -193,3 +193,109 @@ resource "aws_route53_record" "exoscale" {
     "${cloudstack_instance.web.*.ip_address}",
   ]
 }
+
+# Configure the Arukas Provider
+# Will use ARUKAS_JSON_API_TOKEN and ARUKAS_JSON_API_SECRET
+provider "arukas" {}
+
+resource "arukas_container" "arukas" {
+  name      = "Arukas"
+  image     = "landro/httpd-centos-alpine:latest"
+  instances = 1
+  memory    = 256
+
+  ports = {
+    protocol = "tcp"
+    number   = "80"
+  }
+}
+
+# Create DNS CNAME record for exoscale vms
+# in order to support DNS routing
+resource "aws_route53_record" "cloudstack" {
+  zone_id = "${var.dns_zone_id}"
+  name    = "cloudstack.landro.io."
+  type    = "CNAME"
+  ttl     = 60
+
+  records = [
+    "${aws_route53_record.exoscale.fqdn}",
+  ]
+}
+
+# Create DNS CNAME record for arukas containers
+# in order to support DNS routing
+resource "aws_route53_record" "arukas" {
+  zone_id = "${var.dns_zone_id}"
+  name    = "arukas.landro.io."
+  type    = "CNAME"
+  ttl     = 60
+
+  records = [
+    "${arukas_container.arukas.endpoint_full_hostname}",
+  ]
+}
+
+# Create DNS record with weighted routing policy and health checking
+# targeting cloudstack
+resource "aws_route53_record" "cloudstack_www" {
+  zone_id = "${var.dns_zone_id}"
+  name    = "www.landro.io."
+  type    = "CNAME"
+
+  weighted_routing_policy {
+    weight = "${var.nb_web_servers}"
+  }
+
+  set_identifier = "cloustack"
+
+  alias {
+    name                   = "${aws_route53_record.cloudstack.fqdn}"
+    zone_id                = "${aws_route53_record.cloudstack.zone_id}"
+    evaluate_target_health = true
+  }
+
+  health_check_id = "${aws_route53_health_check.cloudstack.id}"
+}
+
+# Create DNS record with weighted routing policy and health checking
+# targeting arukas
+resource "aws_route53_record" "arukas_www" {
+  zone_id = "${var.dns_zone_id}"
+  name    = "www.landro.io."
+  type    = "CNAME"
+
+  weighted_routing_policy {
+    weight = "${arukas_container.arukas.instances}"
+  }
+
+  set_identifier = "arukas"
+
+  alias {
+    name                   = "${aws_route53_record.arukas.fqdn}"
+    zone_id                = "${aws_route53_record.arukas.zone_id}"
+    evaluate_target_health = true
+  }
+
+  health_check_id = "${aws_route53_health_check.arukas.id}"
+}
+
+# Create health check targeting Apache httpd on centos
+resource "aws_route53_health_check" "cloudstack" {
+  fqdn              = "${aws_route53_record.cloudstack.fqdn}"
+  port              = 80
+  type              = "HTTP"
+  resource_path     = "/images/poweredby.png"
+  failure_threshold = "3"
+  request_interval  = "10"
+}
+
+# Create health check targeting Apache httpd on alpine
+resource "aws_route53_health_check" "arukas" {
+  fqdn              = "${arukas_container.arukas.endpoint_full_hostname}"
+  port              = 443
+  type              = "HTTPS"
+  resource_path     = "/"
+  failure_threshold = "3"
+  request_interval  = "10"
+}
