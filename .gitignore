@@ -1,0 +1,16 @@
+# Compiled files
+*.tfstate
+*.tfstate.backup
+
+# Module directory
+.terraform/
+
+# SSH key files
+cloudstack_id_rsa
+cloudstack_id_rsa.pub
+yubikey_id_rsa.pub
+
+# IntelliJ files
+*.iml
+
+.idea/
