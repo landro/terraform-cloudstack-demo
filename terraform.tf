@@ -167,3 +167,29 @@ output "Bastion IP" {
 output "Web IPs" {
   value = "${join(", ",cloudstack_instance.web.*.ip_address)}"
 }
+
+# Configure the AWS Provider
+# Will use AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+provider "aws" {
+  region = "eu-central-1"
+}
+
+# Looked up manually in aws route 53 console
+# Consider using aws_route53_zone resource instead
+variable "dns_zone_id" {
+  default     = "Z2X1UBSEPFNQNM"
+  description = "DNS hosted zone id"
+  type        = "string"
+}
+
+# Create DNS records for exoscale web servers
+resource "aws_route53_record" "exoscale" {
+  zone_id = "${var.dns_zone_id}"
+  name    = "exoscale.landro.io."
+  type    = "A"
+  ttl     = 60
+
+  records = [
+    "${cloudstack_instance.web.*.ip_address}",
+  ]
+}
