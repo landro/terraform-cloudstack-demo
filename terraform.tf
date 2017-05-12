@@ -66,6 +66,23 @@ resource "cloudstack_instance" "web" {
   security_group_ids = [
     "${cloudstack_security_group.web.id}",
   ]
+
+  # Install and run Apache httpd right after
+  # provisioning instance
+  provisioner "remote-exec" {
+    inline = [
+      "yum -y install httpd",
+      "yum -y install mod_ssl",
+      "systemctl start httpd",
+    ]
+  }
+
+  connection {
+    type        = "ssh"
+    user        = "root"
+    private_key = "${file("cloudstack_id_rsa")}"
+    agent       = false
+  }
 }
 
 # Make sure web servers don't run on same host
