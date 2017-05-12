@@ -6,7 +6,7 @@ provider "cloudstack" {
 
 resource "cloudstack_ssh_keypair" "default" {
   name       = "SSH key"
-  public_key = "${file("cloudstack_id_rsa.pub")}"
+  public_key = "${file("yubikey_id_rsa.pub")}"
 }
 
 resource "cloudstack_security_group" "web" {
@@ -17,7 +17,7 @@ resource "cloudstack_security_group" "web" {
 resource "cloudstack_security_group_rule" "web" {
   security_group_id = "${cloudstack_security_group.web.id}"
 
-  # Allow HTTP, HTTPS and SSH traffic from entire Internet
+  # Allow HTTP and HTTPS traffic from entire Internet
   rule {
     cidr_list = [
       "0.0.0.0/0",
@@ -26,6 +26,19 @@ resource "cloudstack_security_group_rule" "web" {
     ports = [
       80,
       443,
+    ]
+
+    protocol     = "tcp"
+    traffic_type = "ingress"
+  }
+
+  # Allow management connections from bastion
+  rule {
+    user_security_group_list = [
+      "${cloudstack_security_group.bastion.name}",
+    ]
+
+    ports = [
       22,
     ]
 
@@ -77,11 +90,12 @@ resource "cloudstack_instance" "web" {
     ]
   }
 
+  # Connect through bastion host
   connection {
-    type        = "ssh"
-    user        = "root"
-    private_key = "${file("cloudstack_id_rsa")}"
-    agent       = false
+    type         = "ssh"
+    user         = "root"
+    bastion_host = "${cloudstack_instance.bastion.ip_address}"
+    agent        = true
   }
 }
 
@@ -89,4 +103,59 @@ resource "cloudstack_instance" "web" {
 resource "cloudstack_affinity_group" "web" {
   name = "web-affinity-group"
   type = "host anti-affinity"
+}
+
+resource "cloudstack_security_group" "bastion" {
+  name        = "bastion"
+  description = "Bastion Servers"
+}
+
+resource "cloudstack_security_group_rule" "bastion" {
+  security_group_id = "${cloudstack_security_group.bastion.id}"
+
+  # Allow management connection
+  # from well known IP range
+  rule {
+    protocol = "tcp"
+
+    ports = [
+      22,
+    ]
+
+    traffic_type = "ingress"
+
+    cidr_list = [
+      # Replace this with your IP address
+      "0.0.0.0/0",
+    ]
+  }
+
+  # Allow management connection to web servers through bastion
+  rule {
+    protocol = "tcp"
+
+    ports = [
+      22,
+    ]
+
+    traffic_type = "egress"
+
+    user_security_group_list = [
+      "${cloudstack_security_group.web.name}",
+    ]
+  }
+}
+
+resource "cloudstack_instance" "bastion" {
+  display_name     = "bastion"
+  template         = "Linux CentOS 7.2 64-bit"
+  service_offering = "Micro"
+  expunge          = true
+  zone             = "${var.zone}"
+  root_disk_size   = "50"
+  keypair          = "${cloudstack_ssh_keypair.default.id}"
+
+  security_group_ids = [
+    "${cloudstack_security_group.bastion.id}",
+  ]
 }
