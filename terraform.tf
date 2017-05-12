@@ -3,3 +3,8 @@
 provider "cloudstack" {
   api_url = "https://api.exoscale.ch/compute"
 }
+
+resource "cloudstack_ssh_keypair" "default" {
+  name       = "SSH key"
+  public_key = "${file("cloudstack_id_rsa.pub")}"
+}
