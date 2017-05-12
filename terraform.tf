@@ -159,3 +159,11 @@ resource "cloudstack_instance" "bastion" {
     "${cloudstack_security_group.bastion.id}",
   ]
 }
+
+output "Bastion IP" {
+  value = "${cloudstack_instance.bastion.ip_address}"
+}
+
+output "Web IPs" {
+  value = "${join(", ",cloudstack_instance.web.*.ip_address)}"
+}
